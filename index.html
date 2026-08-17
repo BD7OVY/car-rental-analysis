@@ -21,32 +21,12 @@
         }
         .header-left h1 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
         .header-left p { font-size: 13px; opacity: 0.8; }
-        .refresh-btn {
-            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
-            color: white; padding: 10px 20px; border-radius: 10px; cursor: pointer;
-            font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;
-            transition: all 0.2s; white-space: nowrap;
-        }
-        .refresh-btn:hover { background: rgba(255,255,255,0.25); }
-        .refresh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .refresh-btn .spinner {
-            width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .refresh-toast {
             position: fixed; top: 20px; right: 20px; padding: 14px 24px; border-radius: 10px;
             font-size: 14px; font-weight: 600; z-index: 9999; opacity: 0;
             transition: opacity 0.3s; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         .header-actions { display: flex; align-items: center; gap: 12px; }
-        .share-btn {
-            background: #3B82F6; border: 1px solid #3B82F6;
-            color: white; padding: 10px 20px; border-radius: 10px; cursor: pointer;
-            font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px;
-            transition: all 0.2s; white-space: nowrap;
-        }
-        .share-btn:hover { background: #3B82F6; }
         .refresh-toast.show { opacity: 1; }
         .refresh-toast.success { background: #069669; color: white; }
         .refresh-toast.error { background: #F97216; color: white; }
@@ -384,11 +364,6 @@
             .header-left h1 { font-size: 20px; }
             .header-left p { font-size: 11px; line-height: 1.5; }
             .header-actions { width: 100%; display: flex; gap: 10px; }
-            .header-actions .share-btn,
-            .header-actions .refresh-btn {
-                flex: 1; justify-content: center; min-height: 44px; font-size: 14px;
-            }
-
             .container { padding: 12px; }
 
             /* 筛选栏：纵向堆叠 + 吸顶常驻 */
@@ -464,14 +439,6 @@
             <p>哈啰 / 滴滴 / 悟空 / 携程 | 统一状态：待取车·待还车·已完成·已取消 | 月出租率=实际出租台次/理论出租台次 | 日均租金=GMV/租期总和 | 数据截至：2026-08-17</p>
         </div>
         <div class="header-actions">
-            <button class="share-btn" id="shareBtn" onclick="shareDashboard()">
-                <span>🔗</span>
-                <span id="shareText">分享</span>
-            </button>
-            <button class="refresh-btn" id="refreshBtn" onclick="refreshData()">
-                <span id="refreshIcon">🔄</span>
-                <span id="refreshText">刷新数据</span>
-            </button>
         </div>
     </div>
     <div class="refresh-toast" id="refreshToast"></div>
@@ -2137,16 +2104,11 @@
     setupImport();
     setupTabs();
 
-    // ===== 刷新数据功能 =====
     function showToast(msg, type) {
         var t = document.getElementById('refreshToast');
         t.textContent = msg;
         t.className = 'refresh-toast show ' + type;
         setTimeout(function() { t.className = 'refresh-toast ' + type; }, 3000);
-    }
-
-    function refreshData() {
-        showToast('当前为静态分享版，不支持后端一键刷新。请用「导入数据」上传最新订单 Excel，或本地运行 server.py 后访问。', 'error');
     }
 
     // ===== 导入数据功能 =====
@@ -2331,39 +2293,6 @@
             });
     }
     loadStatus();
-
-    // ===== 一键分享功能 =====
-    function shareDashboard() {
-        var link = window.location.href;
-        var btn = document.getElementById('shareBtn');
-        var text = document.getElementById('shareText');
-        // 优先使用 Clipboard API
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(link).then(function() {
-                showToast('分享链接已复制，去粘贴给同事吧！', 'success');
-            }).catch(function() {
-                fallbackCopy(link);
-            });
-        } else {
-            fallbackCopy(link);
-        }
-    }
-
-    function fallbackCopy(text) {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        try {
-            document.execCommand('copy');
-            showToast('分享链接已复制，去粘贴给同事吧！', 'success');
-        } catch (e) {
-            showToast('复制失败，链接：' + text, 'error');
-        }
-        document.body.removeChild(ta);
-    }
 
     // ===== 回到顶部 =====
     function scrollToTop() {
