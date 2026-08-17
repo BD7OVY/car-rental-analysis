@@ -32,7 +32,7 @@ tools/               Python 离线刷新管线（可选，非部署必需）
   server.py                本地预览服务（http://localhost:8080）
   config.json              数据源 / 输出目录 / 端口等配置
   make_demo_data.py        生成随仓库附带的演示原始 Excel
-.github/workflows/deploy.yml  GitHub Pages 自动部署工作流
+.nojekyll               禁用 Jekyll，确保 data.json 与离线库原样发布
 启动看板.bat          一键本地运行（Windows）
 ```
 
@@ -84,14 +84,17 @@ python server.py        # 打开 http://localhost:8080
 
 ---
 
-## 部署到 GitHub Pages
+## 部署到 GitHub Pages（分支部署，零工作流）
 
-仓库已内置 `.github/workflows/deploy.yml`：
+本仓库采用与 STR-Analysis 相同的「从分支发布」方式，**不需要 GitHub Actions 工作流**，配置一次即可：
 
-1. 把本仓库推送到 GitHub 的 `main` 分支（见下方「初始化与推送」）；
-2. 推送后 Actions 自动构建并发布到 GitHub Pages；
-3. 首次发布后，在仓库 **Settings → Pages** 确认来源为 **GitHub Actions**；
-4. 站点地址：`https://<你的用户名>.github.io/car-rental-analysis/`。
+1. 把本仓库推送到 GitHub 的 `main` 分支；
+2. 进入仓库 **Settings → Pages → Build and deployment → Source**，选择
+   **Deploy from a branch**，分支选 **main**，目录选 **/ (root)**；
+3. 等待约 1 分钟，访问 `https://<你的用户名>.github.io/car-rental-analysis/` 即可。
+
+> 仓库根目录的 `.nojekyll` 已禁用 Jekyll，确保 `data.json` 与离线库等静态资源原样发布。
+> 之后每次推送 `main`，GitHub Pages 会自动更新站点，无需任何额外操作。
 
 ---
 
