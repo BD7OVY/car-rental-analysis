@@ -5,14 +5,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# 发布到 GitHub Pages 所需的权限
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  pages: write          # 部署 Pages
+  id-token: write       # 验证部署来源（OIDC）
+  administration: write # 首次推送时通过 API 自动开启 Pages（GitHub Actions 来源）
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,11 +23,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 一键自动开启 GitHub Pages（来源 = GitHub Actions）。
+      # 首次运行时会创建 Pages 站点；若已存在则更新为 workflow 构建方式。
+      # 这样仓库所有者无需手动到 Settings → Pages 里改来源即可直接上线。
+      - name: Enable GitHub Pages (GitHub Actions source)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST /repos/${{ github.repository }}/pages -f build_type=workflow \
+            || gh api -X PUT /repos/${{ github.repository }}/pages -f build_type=workflow
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           # 纯前端静态站点：根目录的 index.html + 离线依赖库 + data.json + schema_mapping.json
           path: .
