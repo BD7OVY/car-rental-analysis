@@ -1,0 +1,13 @@
+{
+  "data_source": "sample-data",
+  "output_dir": "tools/sample_outputs",
+  "server_port": 8080,
+  "share_url": "http://localhost:8080",
+  "platforms": {
+    "哈啰":  { "login_url": "", "account": "", "password": "" },
+    "悟空":  { "login_url": "", "account": "", "password": "" },
+    "滴滴":  { "login_url": "", "account": "", "password": "" },
+    "携程":  { "login_url": "", "account": "", "password": "" }
+  },
+  "note": "账号/密码/网址仅用于阶段2「平台自动下载」，首测(Excel手动导入)不使用。请勿把真实凭证提交到公开仓库。"
+}

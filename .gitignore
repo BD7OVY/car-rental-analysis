@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 本地服务日志
+*.log
+
+# 管线自动产出（由 tools 脚本生成，不入库）
+tools/sample_outputs/
