@@ -13,7 +13,7 @@
 - **跨文件去重**：按订单号全局去重，重叠导出的文件夹/多份文件不会重复计数。
 - **丰富看板**：KPI、日/周/月趋势、环比、城市/平台排名、交叉明细表、城市分布地图。
 - **离线可用**：地图与 Excel 解析库均本地化，`file://` 双击与静态托管都能跑。
-- **少量内置示例**：默认载入 2 平台 / 5 城市 / 2 个月（共 32 单）的演示数据，开箱即看。
+- **少量内置示例**：默认载入重庆、广州两城（哈啰 / 悟空 / 滴滴三平台）2026-01～2026-08 共 517 单演示数据，开箱即看。
 
 ---
 
@@ -24,19 +24,12 @@ index.html           主程序（纯前端工作台：导入 / 处理 / 展示�
 china-geo.js         本地化中国地图数据（省份边界 + 城市质心，离线可用）
 xlsx.full.min.js     本地化 SheetJS（解析 Excel，离线可用）
 echarts.min.js       本地化 ECharts（地图与图表）
-schema_mapping.json  表头统一「单一映射配置」（前端导入与 Python 管线共用）
-data.json            内置示例数据（页面默认载入）
+schema_mapping.json  表头统一「单一映射配置」（导入时前端读取，可调列名 / 平台）
 sample-data/         演示原始 Excel（悟空 / 滴滴，表头各不相同，自动识别）
-tools/               Python 离线刷新管线（可选，非部署必需）
-  generate_dashboard.py  读 Excel → 统一 schema → 算指标 → 生成 data.json
-  server.py                本地预览服务（http://localhost:8080）
-  config.json              数据源 / 输出目录 / 端口等配置
-  make_demo_data.py        生成随仓库附带的演示原始 Excel
-.nojekyll               禁用 Jekyll，确保 data.json 与离线库原样发布
-启动看板.bat          一键本地运行（Windows）
+.nojekyll            禁用 Jekyll，确保离线库原样发布
 ```
 
-> GitHub Pages 部署只需 `index.html` + `china-geo.js` + `echarts.min.js` + `xlsx.full.min.js` + `schema_mapping.json` + `data.json` 这些文件，其余为本地开发/刷新工具。
+> GitHub Pages 部署只需根目录的 `index.html` + 三个离线库（`china-geo.js` / `echarts.min.js` / `xlsx.full.min.js`）+ `schema_mapping.json`，其余文件为演示数据，均可缺省。
 
 ---
 
@@ -61,16 +54,13 @@ tools/               Python 离线刷新管线（可选，非部署必需）
 ## 快速开始
 
 **方式一 · 直接打开**
-双击 `index.html` 即可（默认载入内置示例）。
+双击 `index.html` 即可（默认载入内置示例，数据全部本地解析，不上传）。
 
-**方式二 · 本地服务**（推荐，示例数据稳定加载）
+**方式二 · 本地服务**（推荐，避免浏览器对 `file://` 的限制）
 ```bash
-cd tools
-python server.py        # 打开 http://localhost:8080
+python -m http.server 8080
+# 浏览器打开 http://localhost:8080
 ```
-
-**方式三 · 一键启动（Windows）**
-双击 `启动看板.bat`。
 
 ---
 
@@ -93,21 +83,8 @@ python server.py        # 打开 http://localhost:8080
    **Deploy from a branch**，分支选 **main**，目录选 **/ (root)**；
 3. 等待约 1 分钟，访问 `https://<你的用户名>.github.io/car-rental-analysis/` 即可。
 
-> 仓库根目录的 `.nojekyll` 已禁用 Jekyll，确保 `data.json` 与离线库等静态资源原样发布。
+> 仓库根目录的 `.nojekyll` 已禁用 Jekyll，确保离线库等静态资源原样发布。
 > 之后每次推送 `main`，GitHub Pages 会自动更新站点，无需任何额外操作。
-
----
-
-## Python 管线（可选，非部署必需）
-
-```bash
-cd tools
-python make_demo_data.py        # 重新生成 sample-data 演示 Excel
-python generate_dashboard.py    # 读 sample-data → 生成 data.json（刷新内置示例）
-python server.py                # 本地预览
-```
-
-`config.json` 可配置 `data_source`（原始 Excel 目录）、`output_dir`（产出目录）、`server_port`（端口）。
 
 ---
 
