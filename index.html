@@ -1777,6 +1777,7 @@
             }
         };
 
+        try {
         charts.order = new Chart(document.getElementById('chartOrder'), {
             type: 'bar', data: {labels: [...chartCities], datasets: orderDatasets},
             options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y + ' 单'}}, datalabels: mkLabels(function(v){ return v + ' 单'; }, {color: '#1e293b'})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '订单量(单)'}}}}
@@ -1850,12 +1851,13 @@
             ] },
             options: { ...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.yAxisID === 'y1' ? ('订单量 ' + c.parsed.y + ' 单') : ('GMV ¥' + c.parsed.y.toLocaleString())}}, datalabels: {
                 display: function(ctx){ var v = ctx.dataset.data[ctx.dataIndex]; return v != null && v !== 0; },
-                formatter: function(ctx){ var v = ctx.dataset.data[ctx.dataIndex]; return ctx.dataset.label === 'GMV' ? '¥' + kFmt(v) : (v + '单'); },
+                formatter: function(value, ctx){ return ctx.dataset.label === 'GMV' ? '¥' + kFmt(value) : (value + '单'); },
                 color: function(ctx){ return ctx.dataset.label === 'GMV' ? '#F97216' : '#3b82f6'; },
                 font: { size: 9, weight: '600' },
                 anchor: 'end', align: 'end', clamp: true
             }}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, position: 'left', title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}, y1: {...commonOpts.scales.y, position: 'right', title: {display: true, text: '订单量(单)'}, grid: {drawOnChartArea: false}, ticks: {callback: v => v + ' 单'}}} }
         });
+        } catch (e) { console.error('chart 创建失败（不影响其余模块与导入）：', e); }
 
         // 各展示模块独立渲染：任一个抛出异常都不应连累其它模块（此前曾因汇总表一行 aov 为 undefined 导致整页数据空白）
         try { renderComparisons(); } catch (e) { console.error('renderComparisons error:', e); }
