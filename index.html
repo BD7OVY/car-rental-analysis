@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>短租平台经营分析工具 - 哈啰/滴滴/悟空/携程</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="xlsx.full.min.js"></script>
     <script src="china-geo.js"></script>
@@ -113,7 +114,7 @@
         .rate-info b { color: #0369a1; }
 
         .summary-grid {
-            display: grid; grid-template-columns: repeat(7, 1fr); gap: 16px; margin-bottom: 20px;
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 20px;
         }
         .stat-card {
             background: white; border-radius: 14px; padding: 20px;
@@ -360,7 +361,7 @@
         /* ===== 响应式适配：平板 / 手机 ===== */
         /* 平板 768px ~ 1024px：KPI 与平台卡变 2×2，对比/图表保持 2 列 */
         @media (max-width: 1024px) {
-            .summary-grid { grid-template-columns: repeat(4, 1fr); }
+            .summary-grid { grid-template-columns: repeat(3, 1fr); }
             .platform-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
@@ -992,6 +993,32 @@
     const DEFAULT_ORDERS = JSON.parse(JSON.stringify(D.orders));
     let charts = {};
 
+    // 注册 chartjs-plugin-datalabels（用于在所有图表/趋势图上标注具体数值，导出长图时也能看清）
+    try {
+        if (window.ChartDataLabels && !Chart.registry.plugins.get('datalabels')) {
+            Chart.register(window.ChartDataLabels);
+        }
+    } catch (e) { console.warn('datalabels 注册失败：', e); }
+
+    // 数据标注配置工厂：返回 datalabels 插件配置（仅在数值非 0 / 非空时显示）
+    function mkLabels(formatter, opts) {
+        opts = opts || {};
+        return {
+            display: function (ctx) {
+                var v = ctx.dataset.data[ctx.dataIndex];
+                return v != null && v !== 0;
+            },
+            formatter: formatter,
+            color: opts.color || '#334155',
+            font: { size: opts.size || 10, weight: '600' },
+            anchor: opts.anchor || 'end',
+            align: opts.align || 'end',
+            clamp: true,
+            offset: opts.offset || 2
+        };
+    }
+    function kFmt(v) { return v >= 10000 ? (v / 10000).toFixed(1) + 'w' : (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v)); }
+
     Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif";
     Chart.defaults.font.size = 12;
     Chart.defaults.color = '#6b7280';
@@ -1168,9 +1195,34 @@
         }
     }
 
+    // 平台下拉随月份动态变化：仅展示「当前月份有订单」的平台；全部月份时展示完整平台列表
+    function refreshPlatformOptions(month) {
+        const platformSel = document.getElementById('platformFilter');
+        const currentPlatform = platformSel.value;
+        let availablePlatforms;
+        if (month === 'all') {
+            availablePlatforms = D.platforms;
+        } else {
+            const set = new Set(getOrders().filter(o => o.month === month).map(o => o.platform));
+            availablePlatforms = D.platforms.filter(p => set.has(p));
+        }
+        platformSel.innerHTML = '<option value="all">全部平台</option>';
+        availablePlatforms.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p; opt.textContent = p;
+            platformSel.appendChild(opt);
+        });
+        if (currentPlatform !== 'all' && !availablePlatforms.includes(currentPlatform)) {
+            platformSel.value = 'all';
+        } else {
+            platformSel.value = currentPlatform;
+        }
+    }
+
     function onMonthChange() {
         const month = document.getElementById('monthFilter').value;
         updateCityFilter(month);
+        refreshPlatformOptions(month);
         updateDashboard();
     }
 
@@ -1195,11 +1247,7 @@
         onStatusChange();  // 同步"全选"勾选态与按钮文案
 
         const platformSel = document.getElementById('platformFilter');
-        D.platforms.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p; opt.textContent = p;
-            platformSel.appendChild(opt);
-        });
+        refreshPlatformOptions(D.current_month);
         updateCityFilter(D.current_month);
     }
 
@@ -1535,6 +1583,7 @@
         const month = document.getElementById('monthFilter').value;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
+        const plats = platform === 'all' ? D.platforms : [platform];
         const selectedStatuses = getSelectedStatuses();
         const orders = getFilteredOrders();
 
@@ -1651,16 +1700,10 @@
                 <div class="stat-name">在售平台</div>
                 <div class="stat-sub">当前筛选下有订单的平台数</div>
             </div>
-            <div class="stat-card" style="border-top-color:#f59e0b;">
-                <div class="stat-icon">🔔</div>
-                <div class="stat-num" style="color:#b45309;">${pendingPickupCount}</div>
-                <div class="stat-name">待取车订单</div>
-                <div class="stat-sub">需提醒取车的订单数</div>
-            </div>
         `;
 
         // Platform cards - cancelled count follows filters dynamically
-        const platformHtml = D.platforms.map(p => {
+        const platformHtml = plats.map(p => {
             const pAllOrders = orders.filter(o => o.platform === p);
             const pData = pickupOrders.filter(o => o.platform === p);
             const pOrders = pData.length;
@@ -1710,7 +1753,7 @@
         });
 
         const orderDatasets = [], gmvDatasets = [];
-        D.platforms.forEach(p => {
+        plats.forEach(p => {
             const oData = [], gData = [];
             chartCities.forEach(c => {
                 const items = pickupOrders.filter(o => o.platform === p && o.city === c);
@@ -1736,11 +1779,11 @@
 
         charts.order = new Chart(document.getElementById('chartOrder'), {
             type: 'bar', data: {labels: [...chartCities], datasets: orderDatasets},
-            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y + ' 单'}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '订单量(单)'}}}}
+            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y + ' 单'}}, datalabels: mkLabels(function(v){ return v + ' 单'; }, {color: '#1e293b'})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '订单量(单)'}}}}
         });
         charts.gmv = new Chart(document.getElementById('chartGmv'), {
             type: 'bar', data: {labels: [...chartCities], datasets: gmvDatasets},
-            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ¥' + c.parsed.y.toLocaleString()}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}}}
+            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ¥' + c.parsed.y.toLocaleString()}}, datalabels: mkLabels(function(v){ return '¥' + kFmt(v); }, {color: '#1e293b'})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}}}
         });
 
         // 客单价（元/单）by 城市 —— 单一指标柱状图，颜色统一区分
@@ -1752,12 +1795,12 @@
         charts.aov = new Chart(document.getElementById('chartAov'), {
             type: 'bar',
             data: { labels: [...chartCities], datasets: [{ label: '客单价', data: aovData, backgroundColor: '#8b5cf6', borderRadius: 5 }] },
-            options: { ...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => '客单价 ¥' + c.parsed.y.toFixed(0) + ' /单'}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '客单价(元)'}, ticks: {callback: v => '¥' + v}}} }
+            options: { ...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => '客单价 ¥' + c.parsed.y.toFixed(0) + ' /单'}}, datalabels: mkLabels(function(v){ return '¥' + Number(v).toFixed(0); }, {color: '#6d28d9'})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '客单价(元)'}, ticks: {callback: v => '¥' + v}}} }
         });
 
         // Monthly trend charts
         const gmvTrendDatasets = [], orderTrendDatasets = [];
-        D.platforms.forEach(p => {
+        plats.forEach(p => {
             const gData = [], oData = [];
             D.months.forEach(m => {
                 const items = pickupOrders.filter(o => o.platform === p && o.month === m && (city === 'all' || o.city === city));
@@ -1770,11 +1813,11 @@
         });
         charts.gmvTrend = new Chart(document.getElementById('chartGmvTrend'), {
             type: 'line', data: {labels: D.months, datasets: gmvTrendDatasets},
-            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ¥' + c.parsed.y.toLocaleString()}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}}}
+            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ¥' + c.parsed.y.toLocaleString()}}, datalabels: mkLabels(function(v){ return '¥' + kFmt(v); }, {color: '#1e293b', size: 9})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}}}
         });
         charts.orderTrend = new Chart(document.getElementById('chartOrderTrend'), {
             type: 'line', data: {labels: D.months, datasets: orderTrendDatasets},
-            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y + ' 单'}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '订单量(单)'}}}}
+            options: {...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.label + ': ' + c.parsed.y + ' 单'}}, datalabels: mkLabels(function(v){ return v + ' 单'; }, {color: '#1e293b', size: 9})}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, title: {display: true, text: '订单量(单)'}}}}
         });
 
         // GMV 趋势（按日 / 按月）：选择具体月份 → 该月每日 GMV + 订单量；选择全部月份 → 各月 GMV + 订单量
@@ -1805,7 +1848,13 @@
                 { label: 'GMV', data: gmvTrendData, borderColor: '#F97216', backgroundColor: 'rgba(249,114,22,0.12)', fill: true, tension: 0.4, yAxisID: 'y' },
                 { label: '订单量', data: gmvTrendOrders, borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.10)', fill: false, tension: 0.4, yAxisID: 'y1' }
             ] },
-            options: { ...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.yAxisID === 'y1' ? ('订单量 ' + c.parsed.y + ' 单') : ('GMV ¥' + c.parsed.y.toLocaleString())}}}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, position: 'left', title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}, y1: {...commonOpts.scales.y, position: 'right', title: {display: true, text: '订单量(单)'}, grid: {drawOnChartArea: false}, ticks: {callback: v => v + ' 单'}}} }
+            options: { ...commonOpts, plugins: {...commonOpts.plugins, tooltip: {...commonOpts.plugins.tooltip, callbacks: {label: c => c.dataset.yAxisID === 'y1' ? ('订单量 ' + c.parsed.y + ' 单') : ('GMV ¥' + c.parsed.y.toLocaleString())}}, datalabels: {
+                display: function(ctx){ var v = ctx.dataset.data[ctx.dataIndex]; return v != null && v !== 0; },
+                formatter: function(ctx){ var v = ctx.dataset.data[ctx.dataIndex]; return ctx.dataset.label === 'GMV' ? '¥' + kFmt(v) : (v + '单'); },
+                color: function(ctx){ return ctx.dataset.label === 'GMV' ? '#F97216' : '#3b82f6'; },
+                font: { size: 9, weight: '600' },
+                anchor: 'end', align: 'end', clamp: true
+            }}, scales: {...commonOpts.scales, y: {...commonOpts.scales.y, position: 'left', title: {display: true, text: 'GMV(元)'}, ticks: {callback: v => '¥' + (v/1000) + 'k'}}, y1: {...commonOpts.scales.y, position: 'right', title: {display: true, text: '订单量(单)'}, grid: {drawOnChartArea: false}, ticks: {callback: v => v + ' 单'}}} }
         });
 
         // 各展示模块独立渲染：任一个抛出异常都不应连累其它模块（此前曾因汇总表一行 aov 为 undefined 导致整页数据空白）
