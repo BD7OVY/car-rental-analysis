@@ -1227,14 +1227,16 @@
     }
 
     function initFilters() {
-        // 月份下拉默认选中当前月
+        // 月份下拉默认选中当前月（重建前先清空，防止重复调用导致选项重复）
         const monthSel = document.getElementById('monthFilter');
+        const savedMonth = monthSel.value;
+        monthSel.innerHTML = '<option value="all">全部月份</option>';
         D.months.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m; opt.textContent = m;
             monthSel.appendChild(opt);
         });
-        monthSel.value = D.current_month;
+        monthSel.value = (savedMonth && (savedMonth === 'all' || D.months.includes(savedMonth))) ? savedMonth : D.current_month;
 
         // 状态多选：默认不勾选"已取消"
         const statusPanel = document.getElementById('statusPanel');
