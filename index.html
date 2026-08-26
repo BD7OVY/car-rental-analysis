@@ -446,7 +446,7 @@
     <div class="header">
         <div class="header-left">
             <h1>短租平台经营分析工具</h1>
-            <p>哈啰 / 滴滴 / 悟空 / 携程 | 统一状态：待取车·待还车·已完成·已取消 | 月出租率=实际出租台次/理论出租台次 | 日均租金=GMV/租期总和 | 数据截至：2026-08-17</p>
+            <p>哈啰 / 滴滴 / 悟空 / 携程 | 统一状态：待取车·待还车·已完成·已取消 | 月出租率=实际出租台次/理论出租台次 | 日均租金=GMV/租期总和 | 数据截至：<span id="dataAsOf">—</span></p>
         </div>
         <div class="header-actions">
             <button class="export-btn" id="exportBtn" onclick="exportLongImage()">
@@ -754,7 +754,7 @@
         </div>
 
         <div class="footer">
-            数据来源：1_原始数据底表 | 统一四平台状态：待取车·待还车·已完成·已取消 | 月出租率=实际出租台次/理论出租台次×100% | 理论出租台次=月天数×(20×有订单城市数)-(20×有订单城市数) | 日均租金=GMV/租期总和 | 生成时间：2026-08-17
+            数据来源：1_原始数据底表 | 统一四平台状态：待取车·待还车·已完成·已取消 | 月出租率=实际出租台次/理论出租台次×100% | 理论出租台次=月天数×(20×有订单城市数)-(20×有订单城市数) | 日均租金=GMV/租期总和 | 生成时间：<span id="genTime">—</span>
         </div>
     </div>
 
@@ -949,7 +949,7 @@
       const today=todayStr();
       D.orders=orders; D.platforms=platforms; D.cities=cities; D.statuses=statuses;
       D.months=months; D.month_active_cities=month_active_cities; D.month_metrics=month_metrics;
-      D.vehicles_per_city=VPC; D.colors=COLORS; D.today=today;
+      D.vehicles_per_city=VPC; D.colors=COLORS; D.today=today; D.dataAsOf=todayStr();
       D.current_month = months.length ? months[months.length-1] : (D.current_month||today.substring(0,7));
       ['cancelled_summary','city_monthly','city_weekly','city_today_pending','monthly_comparison','weekly_comparison','today_yesterday','city_geo','status_colors','last_month','consolidated'].forEach(function(k){ delete D[k]; });
     }
@@ -1588,6 +1588,9 @@
         const plats = platform === 'all' ? D.platforms : [platform];
         const selectedStatuses = getSelectedStatuses();
         const orders = getFilteredOrders();
+        // 数据截至 / 生成时间：随导入/查看日期动态变化（取当天日期，不再写死）
+        const _dae=document.getElementById('dataAsOf'); if(_dae) _dae.textContent = D.dataAsOf || todayStr();
+        const _gt=document.getElementById('genTime'); if(_gt) _gt.textContent = todayStr();
 
         // Filter info
         let info = '';
