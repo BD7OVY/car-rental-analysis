@@ -538,9 +538,13 @@
         <div class="filter-bar">
             <div class="filter-group">
                 <span class="filter-label">📅 月份</span>
-                <select class="filter-select" id="monthFilter" onchange="onMonthChange()">
-                    <option value="all">全部月份</option>
-                </select>
+                <div class="ms-wrapper" id="monthFilterWrapper">
+                    <div class="ms-btn" onclick="toggleMonthPanel(event)">
+                        <span class="ms-btn-text" id="monthBtnText">全部月份</span>
+                        <span class="ms-btn-arrow">▼</span>
+                    </div>
+                    <div class="ms-panel" id="monthPanel"></div>
+                </div>
             </div>
             <div class="filter-group">
                 <span class="filter-label">🏙️ 城市</span>
@@ -1078,6 +1082,20 @@
         e.stopPropagation();
     });
 
+    // ===== 月份多选面板 =====
+    function toggleMonthPanel(e) {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        const panel = document.getElementById('monthPanel');
+        const isOpen = panel.classList.contains('open');
+        document.querySelectorAll('.ms-panel.open').forEach(p => p.classList.remove('open'));
+        document.querySelectorAll('.ms-btn.open').forEach(b => b.classList.remove('open'));
+        if (!isOpen) { panel.classList.add('open'); btn.classList.add('open'); }
+    }
+    document.getElementById('monthPanel').addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+
     function dimOfMonth(m) {
         const y = parseInt(m.substring(0,4));
         const mn = parseInt(m.substring(5));
@@ -1102,12 +1120,13 @@
     }
 
     function getFilteredOrders() {
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
         const selectedStatuses = getSelectedStatuses();
         return getOrders().filter(o => {
-            if (month !== 'all' && o.month !== month) return false;
+            if (!monthAll && !selectedMonths.includes(o.month)) return false;
             if (city !== 'all' && o.city !== city) return false;
             if (selectedStatuses.length < D.statuses.length && !selectedStatuses.includes(o.status)) return false;
             if (platform !== 'all' && o.platform !== platform) return false;
@@ -1115,45 +1134,48 @@
         });
     }
 
-    // Calculate actual vehicle-days (实际出租台次) for a set of orders in a given month
-    function calcActualVD(orders, monthStr, cityFilter) {
-        if (!monthStr || monthStr === 'all') {
+    // Calculate actual vehicle-days (实际出租台次) for a set of orders across given months (selMonths: [] = all)
+    function calcActualVD(orders, selMonths, cityFilter) {
+        if (!selMonths || selMonths.length === 0) {
             // Sum across all months
             let total = 0;
             const months = new Set(orders.map(o => o.month).filter(m => m));
             months.forEach(m => {
-                total += calcActualVD(orders, m, cityFilter);
+                total += calcActualVD(orders, [m], cityFilter);
             });
             return total;
         }
-        const y = parseInt(monthStr.substring(0,4));
-        const mn = parseInt(monthStr.substring(5));
-        const dim = dimOfMonth(monthStr);
-        // For future months, no actual data yet
-        const today = new Date(D.today);
-        if (y > today.getFullYear() || (y === today.getFullYear() && mn > today.getMonth() + 1)) {
-            return 0;
-        }
-        // For current month, only count up to today
-        let effectiveDim = dim;
-        if (y === today.getFullYear() && mn === today.getMonth() + 1) {
-            effectiveDim = today.getDate();
-        }
         let total = 0;
-        for (let day = 1; day <= effectiveDim; day++) {
-            const d = new Date(y, mn-1, day);
-            let count = 0;
-            for (const o of orders) {
-                if (cityFilter !== 'all' && o.city !== cityFilter) continue;
-                if (!o.actual_pickup) continue;
-                const pickup = parseDate(o.actual_pickup);
-                const ret = o.actual_return ? parseDate(o.actual_return) : null;
-                if (pickup <= d && (!ret || ret >= d)) {
-                    count++;
-                }
+        selMonths.forEach(ms => {
+            if (!ms) return;
+            const y = parseInt(ms.substring(0,4));
+            const mn = parseInt(ms.substring(5));
+            const dim = dimOfMonth(ms);
+            // For future months, no actual data yet
+            const today = new Date(D.today);
+            if (y > today.getFullYear() || (y === today.getFullYear() && mn > today.getMonth() + 1)) return;
+            // For current month, only count up to today
+            let effectiveDim = dim;
+            if (y === today.getFullYear() && mn === today.getMonth() + 1) {
+                effectiveDim = today.getDate();
             }
-            total += count;
-        }
+            let sub = 0;
+            for (let day = 1; day <= effectiveDim; day++) {
+                const d = new Date(y, mn-1, day);
+                let count = 0;
+                for (const o of orders) {
+                    if (cityFilter !== 'all' && o.city !== cityFilter) continue;
+                    if (!o.actual_pickup) continue;
+                    const pickup = parseDate(o.actual_pickup);
+                    const ret = o.actual_return ? parseDate(o.actual_return) : null;
+                    if (pickup <= d && (!ret || ret >= d)) {
+                        count++;
+                    }
+                }
+                sub += count;
+            }
+            total += sub;
+        });
         return total;
     }
 
@@ -1173,16 +1195,20 @@
         return theoretical;
     }
 
-    function updateCityFilter(month) {
+    function updateCityFilter(sel) {
+        if (typeof sel === 'string') sel = (sel === 'all') ? [] : [sel];
+        const monthAll = !sel || sel.length === 0;
+        let availableCities;
+        if (monthAll) {
+            availableCities = D.cities;
+        } else {
+            const set = new Set();
+            sel.forEach(m => (D.month_active_cities[m] || []).forEach(c => set.add(c)));
+            availableCities = [...set];
+        }
         const citySel = document.getElementById('cityFilter');
         const currentCity = citySel.value;
         citySel.innerHTML = '<option value="all">全部城市</option>';
-        let availableCities;
-        if (month === 'all') {
-            availableCities = D.cities;
-        } else {
-            availableCities = D.month_active_cities[month] || [];
-        }
         availableCities.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c; opt.textContent = c;
@@ -1195,17 +1221,20 @@
         }
     }
 
-    // 平台下拉随月份动态变化：仅展示「当前月份有订单」的平台；全部月份时展示完整平台列表
-    function refreshPlatformOptions(month) {
-        const platformSel = document.getElementById('platformFilter');
-        const currentPlatform = platformSel.value;
+    // 平台下拉随月份动态变化：仅展示「当前选中月份有订单」的平台；全部月份时展示完整平台列表
+    function refreshPlatformOptions(sel) {
+        if (typeof sel === 'string') sel = (sel === 'all') ? [] : [sel];
+        const monthAll = !sel || sel.length === 0;
         let availablePlatforms;
-        if (month === 'all') {
+        if (monthAll) {
             availablePlatforms = D.platforms;
         } else {
-            const set = new Set(getOrders().filter(o => o.month === month).map(o => o.platform));
+            const set = new Set();
+            sel.forEach(m => getOrders().filter(o => o.month === m).forEach(o => set.add(o.platform)));
             availablePlatforms = D.platforms.filter(p => set.has(p));
         }
+        const platformSel = document.getElementById('platformFilter');
+        const currentPlatform = platformSel.value;
         platformSel.innerHTML = '<option value="all">全部平台</option>';
         availablePlatforms.forEach(p => {
             const opt = document.createElement('option');
@@ -1219,24 +1248,77 @@
         }
     }
 
+    // 月份多选状态：null=首次(默认全选)，数组(空=全部月份，非空=所选月份)
+    let _monthSel = null;
+
+    function getSelectedMonths() {
+        const all = document.getElementById('monthAll');
+        if (all && all.checked) return [];
+        const vals = [];
+        document.querySelectorAll('.ms-month-cb').forEach(cb => { if (cb.checked) vals.push(cb.value); });
+        return vals.sort();
+    }
+
+    function selectedActiveCities(sel, all) {
+        if (all || !sel || sel.length === 0) return D.cities;
+        const set = new Set();
+        sel.forEach(m => (D.month_active_cities[m] || []).forEach(c => set.add(c)));
+        return [...set];
+    }
+
+    function updateMonthBtnText() {
+        const all = document.getElementById('monthAll');
+        const cbs = Array.from(document.querySelectorAll('.ms-month-cb'));
+        const checked = cbs.filter(cb => cb.checked);
+        const btnText = document.getElementById('monthBtnText');
+        if (all.checked || checked.length === 0) btnText.textContent = '全部月份';
+        else if (checked.length === 1) btnText.textContent = checked[0].value;
+        else btnText.textContent = '已选' + checked.length + '个月';
+    }
+
+    function initMonthFilter() {
+        const panel = document.getElementById('monthPanel');
+        let html = '<div class="ms-item" onclick="toggleAllMonths()"><input type="checkbox" id="monthAll" checked><label for="monthAll" style="cursor:pointer;font-weight:600">全选</label></div><div class="ms-divider"></div>';
+        D.months.forEach(m => {
+            html += `<div class="ms-item"><input type="checkbox" class="ms-month-cb" value="${m}" checked onclick="onMonthChange()"><label style="cursor:pointer;flex:1">${m}</label></div>`;
+        });
+        panel.innerHTML = html;
+        // 恢复上一次的选择（仅保留仍有效的月份）
+        if (_monthSel !== null) {
+            const valid = _monthSel.filter(m => D.months.includes(m));
+            if (valid.length === 0 || valid.length === D.months.length) {
+                document.getElementById('monthAll').checked = true;
+            } else {
+                document.getElementById('monthAll').checked = false;
+                document.querySelectorAll('.ms-month-cb').forEach(cb => cb.checked = valid.includes(cb.value));
+            }
+        }
+        updateMonthBtnText();
+    }
+
+    function toggleAllMonths() {
+        const all = document.getElementById('monthAll');
+        document.querySelectorAll('.ms-month-cb').forEach(cb => cb.checked = all.checked);
+        updateMonthBtnText();
+        _monthSel = getSelectedMonths();
+        onMonthChange();
+    }
+
     function onMonthChange() {
-        const month = document.getElementById('monthFilter').value;
-        updateCityFilter(month);
-        refreshPlatformOptions(month);
+        const all = document.getElementById('monthAll');
+        const cbs = Array.from(document.querySelectorAll('.ms-month-cb'));
+        const checkedCount = cbs.filter(cb => cb.checked).length;
+        all.checked = (checkedCount === cbs.length);
+        updateMonthBtnText();
+        _monthSel = getSelectedMonths();
+        const sel = _monthSel;
+        updateCityFilter(sel);
+        refreshPlatformOptions(sel);
         updateDashboard();
     }
 
     function initFilters() {
-        // 月份下拉默认选中当前月（重建前先清空，防止重复调用导致选项重复）
-        const monthSel = document.getElementById('monthFilter');
-        const savedMonth = monthSel.value;
-        monthSel.innerHTML = '<option value="all">全部月份</option>';
-        D.months.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m; opt.textContent = m;
-            monthSel.appendChild(opt);
-        });
-        monthSel.value = (savedMonth && (savedMonth === 'all' || D.months.includes(savedMonth))) ? savedMonth : D.current_month;
+        initMonthFilter();
 
         // 状态多选：默认不勾选"已取消"
         const statusPanel = document.getElementById('statusPanel');
@@ -1249,12 +1331,13 @@
         onStatusChange();  // 同步"全选"勾选态与按钮文案
 
         const platformSel = document.getElementById('platformFilter');
-        refreshPlatformOptions(D.current_month);
-        updateCityFilter(D.current_month);
+        refreshPlatformOptions([]);
+        updateCityFilter([]);
     }
 
     function renderComparisons() {
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
         const selectedStatuses = getSelectedStatuses();
@@ -1289,7 +1372,7 @@
         }
 
         // ===== 本月 vs 上月（锚定所选月 / 当前月，套用 城市/平台/状态 筛选）=====
-        const anchorMonth = (month === 'all') ? D.current_month : month;
+        const anchorMonth = monthAll ? D.current_month : selectedMonths[selectedMonths.length - 1];
         const prevM = prevMonthStr(anchorMonth);
         const base = applyFilters(allOrders);
         const thisM = base.filter(o => o.month === anchorMonth && o.actual_pickup);
@@ -1384,7 +1467,8 @@
 
     // 三个城市表格：全部响应 月份/城市/状态/平台 筛选（从已筛选订单实时重算）
     function renderCityTables() {
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
         const selectedStatuses = getSelectedStatuses();
@@ -1404,7 +1488,7 @@
         }
 
         // ===== 城市月度对比：锚定月份（全部=当前月，否则=所选月）vs 其前一月 =====
-        const anchorMonth = (month === 'all') ? D.current_month : month;
+        const anchorMonth = monthAll ? D.current_month : selectedMonths[selectedMonths.length - 1];
         const prevM = prevMonthStr(anchorMonth);
         const cm = {};
         baseOrders.forEach(o => {
@@ -1530,7 +1614,8 @@
 
     // ===== 待取车订单提醒：始终展示 待取车 订单（防止漏通知），套用 月份/城市/平台 筛选 =====
     function renderPendingPickup() {
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
         const today = parseDate(D.today);
@@ -1538,7 +1623,7 @@
 
         let list = getOrders().filter(o => {
             if (o.status !== '待取车') return false;
-            if (month !== 'all' && o.month !== month) return false;
+            if (!monthAll && !selectedMonths.includes(o.month)) return false;
             if (city !== 'all' && o.city !== city) return false;
             if (platform !== 'all' && o.platform !== platform) return false;
             return true;
@@ -1582,7 +1667,8 @@
     }
 
     function updateDashboard() {
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
         const plats = platform === 'all' ? D.platforms : [platform];
@@ -1595,7 +1681,7 @@
         // Filter info
         let info = '';
         const parts = [];
-        if (month !== 'all') parts.push(`月份: ${month}`);
+        if (!monthAll) parts.push('月份: ' + (selectedMonths.length <= 3 ? selectedMonths.join('、') : selectedMonths.length + '个月'));
         if (city !== 'all') parts.push(`城市: ${city}`);
         const allChecked = selectedStatuses.length >= D.statuses.length;
         if (!allChecked) {
@@ -1618,7 +1704,7 @@
         // 注意：D.orders 是紧凑数组，必须用 getOrders() 转为带字段的对象后再取 o.platform
         const activePlatforms = new Set(
             getOrders().filter(o => {
-                if (month !== 'all' && o.month !== month) return false;
+                if (!monthAll && !selectedMonths.includes(o.month)) return false;
                 if (city !== 'all' && o.city !== city) return false;
                 if (selectedStatuses.length < D.statuses.length && !selectedStatuses.includes(o.status)) return false;
                 return true;
@@ -1628,7 +1714,7 @@
         // 待取车订单数：始终统计「待取车」状态订单（防漏通知），套用 月份/城市/平台 筛选（不受状态多选影响，与待取车提醒板块口径一致）
         const pendingPickupCount = getOrders().filter(o => {
             if (o.status !== '待取车') return false;
-            if (month !== 'all' && o.month !== month) return false;
+            if (!monthAll && !selectedMonths.includes(o.month)) return false;
             if (city !== 'all' && o.city !== city) return false;
             if (platform !== 'all' && o.platform !== platform) return false;
             return true;
@@ -1637,21 +1723,21 @@
         // Rental rate
         const monthsSet = new Set(orders.filter(o => o.month).map(o => o.month));
         let actualVD, theoreticalVD;
-        if (month !== 'all') {
-            actualVD = calcActualVD(orders, month, city);
-            theoreticalVD = calcTheoreticalVD([month], city);
+        if (!monthAll) {
+            actualVD = calcActualVD(orders, selectedMonths, city);
+            theoreticalVD = calcTheoreticalVD(selectedMonths, city);
         } else {
-            actualVD = calcActualVD(orders, 'all', city);
+            actualVD = calcActualVD(orders, [], city);
             theoreticalVD = calcTheoreticalVD([...monthsSet], city);
         }
         const rentalRate = theoreticalVD > 0 ? (actualVD / theoreticalVD * 100) : 0;
 
         // Rate info
         let rateInfoHtml = '';
-        if (month !== 'all') {
-            const mt = D.month_metrics[month];
+        if (!monthAll && selectedMonths.length === 1) {
+            const mt = D.month_metrics[selectedMonths[0]];
             if (mt) {
-                rateInfoHtml = `<b>${month}</b>: ${mt.active_city_count}城×${VPC}台=${mt.total_vehicles}台 → 理论${mt.theoretical_vd}台次`;
+                rateInfoHtml = `<b>${selectedMonths[0]}</b>: ${mt.active_city_count}城×${VPC}台=${mt.total_vehicles}台 → 理论${mt.theoretical_vd}台次`;
             }
         } else {
             rateInfoHtml = `出租率 = 实际出租台次 / 理论出租台次 | 理论 = 月天数×(${VPC}×有订单城市数)-(${VPC}×有订单城市数)`;
@@ -1659,8 +1745,8 @@
         document.getElementById('rateInfo').innerHTML = rateInfoHtml;
 
         let rateSubText;
-        if (month !== 'all' && city === 'all') {
-            const mt = D.month_metrics[month];
+        if (!monthAll && selectedMonths.length === 1 && city === 'all') {
+            const mt = D.month_metrics[selectedMonths[0]];
             rateSubText = mt ? `${mt.active_city_count}城×${VPC}台=${mt.total_vehicles}台` : `${VPC}台/城`;
         } else if (city !== 'all') {
             rateSubText = `${VPC}台/城`;
@@ -1740,8 +1826,8 @@
         let chartCities;
         if (city !== 'all') {
             chartCities = [city];
-        } else if (month !== 'all') {
-            chartCities = D.month_active_cities[month] || D.cities;
+        } else if (!monthAll) {
+            chartCities = selectedActiveCities(selectedMonths, monthAll);
         } else {
             chartCities = D.cities;
         }
@@ -1751,7 +1837,7 @@
             chartCities = chartCities.filter(c => pickupOrders.some(o => o.city === c));
         }
 
-        const subtitle = month === 'all' ? '当前显示：全部月份' : `当前显示：${month}`;
+        const subtitle = monthAll ? '当前显示：全部月份' : '当前显示：' + selectedMonths.join('、');
         ['subOrder','subGmv'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = subtitle;
@@ -1828,9 +1914,10 @@
 
         // GMV 趋势（按日 / 按月）：选择具体月份 → 该月每日 GMV + 订单量；选择全部月份 → 各月 GMV + 订单量
         const gmvTrendLabels = [], gmvTrendData = [], gmvTrendOrders = [];
-        if (month !== 'all') {
-            const y = parseInt(month.substring(0, 4)), mn = parseInt(month.substring(5));
-            const dim = dimOfMonth(month);
+        if (!monthAll && selectedMonths.length === 1) {
+            const selM = selectedMonths[0];
+            const y = parseInt(selM.substring(0, 4)), mn = parseInt(selM.substring(5));
+            const dim = dimOfMonth(selM);
             const t = new Date(D.today);
             let eff = dim;
             if (y === t.getFullYear() && mn === t.getMonth() + 1) eff = t.getDate();
@@ -1842,7 +1929,8 @@
                 gmvTrendOrders.push(pickupOrders.filter(o => o.actual_pickup === dayStr).length);
             }
         } else {
-            D.months.forEach(m => {
+            const monthsToShow = monthAll ? D.months : selectedMonths;
+            monthsToShow.forEach(m => {
                 gmvTrendLabels.push(m);
                 gmvTrendData.push(pickupOrders.filter(o => o.month === m).reduce((s, o) => s + o.gmv, 0));
                 gmvTrendOrders.push(pickupOrders.filter(o => o.month === m).length);
@@ -1892,10 +1980,11 @@
             el.innerHTML = html || '';
             el.classList.toggle('empty', !html);
         };
-        const month = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const city = document.getElementById('cityFilter').value;
         const platform = document.getElementById('platformFilter').value;
-        const ctx = (month === 'all' ? '全部月份' : month) + ' · ' + (city === 'all' ? '全部城市' : city) + ' · ' + (platform === 'all' ? '全部平台' : platform);
+        const ctx = (monthAll ? '全部月份' : selectedMonths.join('、')) + ' · ' + (city === 'all' ? '全部城市' : city) + ' · ' + (platform === 'all' ? '全部平台' : platform);
         const fmt = v => '¥' + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0});
         const sel = getSelectedStatuses();
 
@@ -1909,11 +1998,14 @@
         const topPlats = Object.entries(byPlat).sort((a, b) => b[1] - a[1]).slice(0, 3)
             .map(([p, v]) => `${p}(¥${v.toLocaleString(undefined, {maximumFractionDigits: 0})})`).join('、');
 
-        // 环比上月 GMV（仅选具体月份时计算）
+        // 环比上月 GMV（选择了具体月份时计算，锚定所选最新月份）
         let mom = null;
-        if (month !== 'all') {
+        if (!monthAll) {
+            const anchorMonth = selectedMonths[selectedMonths.length - 1];
+            const ay = parseInt(anchorMonth.substring(0, 4)), amn = parseInt(anchorMonth.substring(5));
+            const prevMstr = amn === 1 ? (ay - 1) + '-12' : ay + '-' + String(amn - 1).padStart(2, '0');
             const thisM = pickupOrders.reduce((s, o) => s + o.gmv, 0);
-            const prevM = D.orders.filter(o => o.month !== month && o.actual_pickup
+            const prevM = D.orders.filter(o => o.month === prevMstr && o.actual_pickup
                 && (city === 'all' || o.city === city)
                 && (sel.length >= D.statuses.length || sel.includes(o.status))
                 && (platform === 'all' || o.platform === platform)
@@ -1943,7 +2035,7 @@
         // ---- 客单价分析 ----
         let aovCities;
         if (city !== 'all') aovCities = [city];
-        else if (month !== 'all') aovCities = (D.month_active_cities[month] || D.cities).filter(c => pickupOrders.some(o => o.city === c));
+        else if (!monthAll) aovCities = selectedActiveCities(selectedMonths, monthAll).filter(c => pickupOrders.some(o => o.city === c));
         else aovCities = D.cities.filter(c => pickupOrders.some(o => o.city === c));
         const arr = aovCities.map(c => {
             const items = pickupOrders.filter(o => o.city === c);
@@ -1968,8 +2060,8 @@
             const maxI = data.indexOf(Math.max.apply(null, data));
             const peakLabel = labels[maxI], peakVal = data[maxI];
             let t = `<span class="ih">数据洞察</span>`;
-            if (month !== 'all') {
-                t += `所选月份 <b>${month}</b> 内，GMV 峰值出现在 <b>${peakLabel}</b>（${fmt(peakVal)}）`;
+        if (!monthAll) {
+            t += `所选月份 <b>${selectedMonths.join('、')}</b> 内，GMV 峰值出现在 <b>${peakLabel}</b>（${fmt(peakVal)}）`;
             } else {
                 t += `各月 GMV 中，<b>${peakLabel}</b> 最高（${fmt(peakVal)}）`;
             }
@@ -2031,13 +2123,14 @@
 
     function updateConsolidatedTable(pickupOrders) {
         const tbody = document.getElementById('consolidatedBody');
-        const monthSel = document.getElementById('monthFilter').value;
+        const selectedMonths = getSelectedMonths();
+        const monthAll = selectedMonths.length === 0;
         const citySel = document.getElementById('cityFilter').value;
         let chartCities;
         if (citySel !== 'all') {
             chartCities = [citySel];
-        } else if (monthSel !== 'all') {
-            chartCities = D.month_active_cities[monthSel] || D.cities;
+        } else if (!monthAll) {
+            chartCities = selectedActiveCities(selectedMonths, monthAll);
         } else {
             chartCities = D.cities;
         }
@@ -2057,7 +2150,7 @@
             let maxDays = 0;
             const monthsSet = new Set(items.map(o => o.month));
             maxDays = calcTheoreticalVD([...monthsSet], c);
-            const actualVD = calcActualVD(items, monthSel === 'all' ? 'all' : monthSel, c);
+            const actualVD = calcActualVD(items, monthAll ? [] : selectedMonths, c);
             const rate = maxDays > 0 ? (actualVD / maxDays * 100) : 0;
             const dailyR = totalDays > 0 ? totalGmv / totalDays : 0;
             const aov = totalOrders > 0 ? totalGmv / totalOrders : 0;  // 客单价
